@@ -12,52 +12,79 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Шаг 1: Получить код из репозитория
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # Шаг 2: Получить существующую ветку gh-pages (чтобы сохранить старые версии)
-      - name: Checkout gh-pages
+      - name: Checkout gh-pages (if exists)
         uses: actions/checkout@v4
         with:
           ref: gh-pages
           path: gh-pages-content
+          fetch-depth: 0
+        continue-on-error: true
 
-      # Шаг 3: Настроить Node.js
-      - name: Setup Node.js
+      - name: Get release version
+        id: get_version
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          if [[ -z "$TAG" ]]; then
+            echo "No release tag found!"
+            exit 1
+          fi
+          if [[ "$TAG" == v* ]]; then
+            VERSION="$TAG"
+          else
+            VERSION="v$TAG"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "original_tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Determined version: $VERSION"
+
+      - name: Setup Node.js (optional, remove if not needed)
         uses: actions/setup-node@v4
         with:
           node-version: '18'
 
-      # Шаг 4: Получить название релиза
-      - name: Get release version
-        id: get_version
-        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-      # Шаг 5: Создать структуру папок
-      - name: Prepare deployment
+      - name: Prepare build directory
         run: |
-          # Создаем основную папку сборки
-          mkdir -p build
-          
-          # Копируем ВСЕ старые версии из gh-pages в новую сборку
-          if [ -d "gh-pages-content" ]; then
-            cp -r gh-pages-content/* build/ || true
-          fi
-          
-          # Создаем новую версионную папку
-          mkdir -p build/v${{ steps.get_version.outputs.version }}
-          
-          # Копируем текущие файлы в новую версионную папку
-          cp -r ./ru ./en ./index.html ./build/v${{ steps.get_version.outputs.version }}/
-          
-          # Также обновляем основную (latest) версию
-          cp -r ./ru ./en ./index.html ./build/
+          set -eux
+          VERSION="${{ steps.get_version.outputs.version }}"
+          echo "VERSION=$VERSION"
 
-      # Шаг 6: Развернуть в ветку gh-pages
-      - name: Deploy to GitHub Pages
+          mkdir -p build
+
+          # If gh-pages branch existed, copy its content to preserve old versions
+          if [ -d "gh-pages-content" ]; then
+            echo "Copying existing gh-pages content"
+            cp -a gh-pages-content/. build/ || true
+          else
+            echo "No existing gh-pages branch content found"
+          fi
+
+          TARGET="build/${VERSION}"
+          mkdir -p "${TARGET}"
+
+          # Copy current site files into the versioned folder
+          [ -d "./ru" ] && cp -a ./ru "${TARGET}/ru"
+          [ -d "./en" ] && cp -a ./en "${TARGET}/en"
+          [ -f "./index.html" ] && cp -a ./index.html "${TARGET}/index.html"
+
+          # Update latest alias
+          rm -rf build/latest || true
+          mkdir -p build/latest
+          cp -a "${TARGET}/." build/latest/ || true
+
+          echo "Build tree:"
+          ls -la build || true
+          if command -v tree >/dev/null 2>&1; then tree build || true; fi
+
+      - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./build
-          force_orphan: false
+          publish_branch: gh-pages
+          user_name: github-actions[bot]
+          user_email: 41898282+github-actions[bot]@users.noreply.github.com
