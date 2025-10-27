@@ -1,4 +1,4 @@
-name: Deploy site on GitHub Release
+name: Deploy to GitHub Pages on Release
 
 on:
   release:
@@ -8,44 +8,56 @@ permissions:
   contents: write
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      # Шаг 1: Получить код из репозитория
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Шаг 2: Получить существующую ветку gh-pages (чтобы сохранить старые версии)
+      - name: Checkout gh-pages
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          ref: gh-pages
+          path: gh-pages-content
 
-      - name: Prepare variables
+      # Шаг 3: Настроить Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      # Шаг 4: Получить название релиза
+      - name: Get release version
+        id: get_version
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      # Шаг 5: Создать структуру папок
+      - name: Prepare deployment
         run: |
-          echo "TAG=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
-          echo "DEST=v${{ github.event.release.tag_name }}" >> $GITHUB_ENV
+          # Создаем основную папку сборки
+          mkdir -p build
+          
+          # Копируем ВСЕ старые версии из gh-pages в новую сборку
+          if [ -d "gh-pages-content" ]; then
+            cp -r gh-pages-content/* build/ || true
+          fi
+          
+          # Создаем новую версионную папку
+          mkdir -p build/v${{ steps.get_version.outputs.version }}
+          
+          # Копируем текущие файлы в новую версионную папку
+          cp -r ./ru ./en ./index.html ./build/v${{ steps.get_version.outputs.version }}/
+          
+          # Также обновляем основную (latest) версию
+          cp -r ./ru ./en ./index.html ./build/
 
-      - name: Prepare site files
-        run: |
-          mkdir -p out
-          # Копируем статические файлы в out
-          cp -R ru en index.html out/ || true
-          # Если есть сборка (npm/yarn), выполните её и положите результат в ./out
-          # Пример (раскомментируйте при необходимости):
-          # uses: actions/setup-node@v4
-          # npm install
-          # npm run build
-          # cp -R build/* out/
-
-      - name: Deploy to gh-pages (versioned folder)
+      # Шаг 6: Развернуть в ветку gh-pages
+      - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./out
-          publish_branch: gh-pages
-          destination_dir: v${{ github.event.release.tag_name }}
-
-      - name: Also publish to "latest" (optional)
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./out
-          publish_branch: gh-pages
-          destination_dir: latest
+          publish_dir: ./build
+          force_orphan: false
