@@ -1,47 +1,63 @@
-name: Deploy on Release
+name: Deploy to GitHub Pages on Release
 
 on:
   release:
     types: [published]
 
+permissions:
+  contents: write
+
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
+      # Шаг 1: Получить код из репозитория
       - name: Checkout code
         uses: actions/checkout@v4
+
+      # Шаг 2: Получить существующую ветку master (чтобы сохранить старые версии)
+      - name: Checkout master
+        uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
-          persist-credentials: true
+          ref: master
+          path: master-content
 
-      - name: Create version folder, commit and push to default branch
+      # Шаг 3: Настроить Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      # Шаг 4: Получить название релиза
+      - name: Get release version
+        id: get_version
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      # Шаг 5: Создать структуру папок
+      - name: Prepare deployment
         run: |
-          set -eux
-          TAG="${{ github.event.release.tag_name }}"
-          [ -n "$TAG" ] || { echo "Empty tag"; exit 1; }
-          mkdir -p "versions/${TAG}"
-          [ -f "./index.html" ] && cp -a ./index.html "versions/${TAG}/index.html"
-          [ -d "./ru" ] && cp -a ./ru "versions/${TAG}/ru"
-          [ -d "./en" ] && cp -a ./en "versions/${TAG}/en"
-
-          # git config
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-
-          # получаем default branch и переключаемся на него
-          git fetch origin
-          DEFAULT_BRANCH=$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')
-          echo "Default branch is: $DEFAULT_BRANCH"
-          git checkout "$DEFAULT_BRANCH"
-
-          git add versions/
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "Add version ${TAG}"
-            git push origin "$DEFAULT_BRANCH"
+          # Создаем основную папку сборки
+          mkdir -p build
+          
+          # Копируем ВСЕ старые версии из master в новую сборку
+          if [ -d "master-content" ]; then
+            cp -r master-content/* build/ || true
           fi
+          
+          # Создаем новую версионную папку
+          mkdir -p build/v${{ steps.get_version.outputs.version }}
+          
+          # Копируем текущие файлы в новую версионную папку
+          cp -r ./ru ./en ./index.html ./build/v${{ steps.get_version.outputs.version }}/
+          
+          # Также обновляем основную (latest) версию
+          cp -r ./ru ./en ./index.html ./build/
+
+      # Шаг 6: Развернуть в ветку gh-pages
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-master@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build
+          force_orphan: false
