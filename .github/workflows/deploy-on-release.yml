@@ -1,28 +1,51 @@
-name: Simple Deploy
+name: Deploy site on GitHub Release
 
 on:
   release:
     types: [published]
 
+permissions:
+  contents: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
-        
-      - name: Create basic version file
+        with:
+          fetch-depth: 0
+
+      - name: Prepare variables
         run: |
-          mkdir -p versions/${{ github.event.release.tag_name }}
-          echo "<h1>Version ${{ github.event.release.tag_name }}</h1>" > versions/${{ github.event.release.tag_name }}/index.html
-          echo "<p><a href='../'>Back to main</a></p>" >> versions/${{ github.event.release.tag_name }}/index.html
-          
-      - name: Commit version
+          echo "TAG=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
+          echo "DEST=v${{ github.event.release.tag_name }}" >> $GITHUB_ENV
+
+      - name: Prepare site files
         run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git add versions/
-          git commit -m "Add ${{ github.event.release.tag_name }} version"
-          git push
+          mkdir -p out
+          # Копируем статические файлы в out
+          cp -R ru en index.html out/ || true
+          # Если есть сборка (npm/yarn), выполните её и положите результат в ./out
+          # Пример (раскомментируйте при необходимости):
+          # uses: actions/setup-node@v4
+          # npm install
+          # npm run build
+          # cp -R build/* out/
+
+      - name: Deploy to gh-pages (versioned folder)
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./out
+          publish_branch: gh-pages
+          destination_dir: v${{ github.event.release.tag_name }}
+
+      - name: Also publish to "latest" (optional)
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./out
+          publish_branch: gh-pages
+          destination_dir: latest
