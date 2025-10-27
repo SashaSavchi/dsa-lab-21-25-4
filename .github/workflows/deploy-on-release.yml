@@ -1,4 +1,4 @@
-name: Deploy on Release
+name: Simple Deploy
 
 on:
   release:
@@ -12,18 +12,17 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: Create simple version
+        
+      - name: Create basic version file
         run: |
-          mkdir -p versions/v1.0.0
-          echo "<html><body><h1>Version 1.0.0</h1></body></html>" > versions/v1.0.0/index.html
+          mkdir -p versions/${{ github.event.release.tag_name }}
+          echo "<h1>Version ${{ github.event.release.tag_name }}</h1>" > versions/${{ github.event.release.tag_name }}/index.html
+          echo "<p><a href='../'>Back to main</a></p>" >> versions/${{ github.event.release.tag_name }}/index.html
           
-      - name: Commit and push
+      - name: Commit version
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          git add .
-          git commit -m "Add version folder" || exit 0
+          git add versions/
+          git commit -m "Add ${{ github.event.release.tag_name }} version"
           git push
