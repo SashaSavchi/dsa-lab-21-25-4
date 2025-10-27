@@ -9,22 +9,54 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: Create version folder
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Debug info
         run: |
-          mkdir -p versions
-          # Копируем только нужные файлы, избегая копирования самой папки versions
-          cp -r index.html ru en versions/${{ github.event.release.tag_name }}/
-          
-      - name: Commit and push changes
+          echo "Event: $GITHUB_EVENT_NAME"
+          echo "Release tag from event: ${{ github.event.release.tag_name }}"
+          pwd
+          ls -la
+
+      - name: Create version folder, copy files, commit & push
         run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
+          set -eux
+
+          TAG="${{ github.event.release.tag_name }}"
+          if [ -z "$TAG" ]; then
+            echo "ERROR: release tag is empty"
+            exit 1
+          fi
+          echo "Using tag: $TAG"
+
+          # Создаём целевую папку версии
+          mkdir -p "versions/${TAG}"
+
+          # Копируем по-отдельности (без копирования самой папки versions)
+          [ -f "./index.html" ] && cp -a ./index.html "versions/${TAG}/index.html"
+          [ -d "./ru" ] && cp -a ./ru "versions/${TAG}/ru"
+          [ -d "./en" ] && cp -a ./en "versions/${TAG}/en"
+
+          # Покажем содержимое для отладки
+          echo "Contents of versions/${TAG}:"
+          ls -la "versions/${TAG}" || true
+
+          # Настраиваем гит и коммитим только при изменениях
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
           git add versions/
-          git commit -m "Add version ${{ github.event.release.tag_name }}"
-          git push
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Add version ${TAG}"
+            git push
+          fi
