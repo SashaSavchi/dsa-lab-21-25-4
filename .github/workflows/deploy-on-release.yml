@@ -14,17 +14,16 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          ref: master  
           
-      - name: Create version folder
+      - name: Create simple version
         run: |
-          mkdir -p versions
-          cp -r index.html ru en versions/${{ github.event.release.tag_name }}/
+          mkdir -p versions/v1.0.0
+          echo "<html><body><h1>Version 1.0.0</h1></body></html>" > versions/v1.0.0/index.html
           
-      - name: Commit and push changes
+      - name: Commit and push
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          git add versions/
-          git commit -m "Add version ${{ github.event.release.tag_name }}"
-          git push origin master 
+          git add .
+          git commit -m "Add version folder" || exit 0
+          git push
