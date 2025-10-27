@@ -18,45 +18,30 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Debug info
-        run: |
-          echo "Event: $GITHUB_EVENT_NAME"
-          echo "Release tag from event: ${{ github.event.release.tag_name }}"
-          pwd
-          ls -la
-
-      - name: Create version folder, copy files, commit & push
+      - name: Create version folder, commit and push to default branch
         run: |
           set -eux
-
           TAG="${{ github.event.release.tag_name }}"
-          if [ -z "$TAG" ]; then
-            echo "ERROR: release tag is empty"
-            exit 1
-          fi
-          echo "Using tag: $TAG"
-
-          # Создаём целевую папку версии
+          [ -n "$TAG" ] || { echo "Empty tag"; exit 1; }
           mkdir -p "versions/${TAG}"
-
-          # Копируем по-отдельности (без копирования самой папки versions)
           [ -f "./index.html" ] && cp -a ./index.html "versions/${TAG}/index.html"
           [ -d "./ru" ] && cp -a ./ru "versions/${TAG}/ru"
           [ -d "./en" ] && cp -a ./en "versions/${TAG}/en"
 
-          # Покажем содержимое для отладки
-          echo "Contents of versions/${TAG}:"
-          ls -la "versions/${TAG}" || true
-
-          # Настраиваем гит и коммитим только при изменениях
+          # git config
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
-          git add versions/
+          # получаем default branch и переключаемся на него
+          git fetch origin
+          DEFAULT_BRANCH=$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')
+          echo "Default branch is: $DEFAULT_BRANCH"
+          git checkout "$DEFAULT_BRANCH"
 
+          git add versions/
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
             git commit -m "Add version ${TAG}"
-            git push
+            git push origin "$DEFAULT_BRANCH"
           fi
