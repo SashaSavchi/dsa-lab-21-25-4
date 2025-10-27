@@ -1,63 +1,30 @@
-name: Deploy to GitHub Pages on Release
+name: Deploy Versions
 
 on:
   release:
     types: [published]
 
-permissions:
-  contents: write
-
 jobs:
-  build-and-deploy:
+  create-version:
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: write
     steps:
-      # Шаг 1: Получить код из репозитория
       - name: Checkout code
         uses: actions/checkout@v4
-
-      # Шаг 2: Получить существующую ветку master (чтобы сохранить старые версии)
-      - name: Checkout master
-        uses: actions/checkout@v4
-        with:
-          ref: master
-          path: master-content
-
-      # Шаг 3: Настроить Node.js
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      # Шаг 4: Получить название релиза
-      - name: Get release version
-        id: get_version
-        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-      # Шаг 5: Создать структуру папок
-      - name: Prepare deployment
+        
+      - name: Create version directory
         run: |
-          # Создаем основную папку сборки
-          mkdir -p build
+          VERSION="${{ github.event.release.tag_name }}"
+          mkdir -p "versions/$VERSION"
+          cp index.html "versions/$VERSION/" 2>/dev/null || echo "No index.html"
+          [ -d "ru" ] && cp -r ru "versions/$VERSION/" || echo "No ru folder"
+          [ -d "en" ] && cp -r en "versions/$VERSION/" || echo "No en folder"
           
-          # Копируем ВСЕ старые версии из master в новую сборку
-          if [ -d "master-content" ]; then
-            cp -r master-content/* build/ || true
-          fi
-          
-          # Создаем новую версионную папку
-          mkdir -p build/v${{ steps.get_version.outputs.version }}
-          
-          # Копируем текущие файлы в новую версионную папку
-          cp -r ./ru ./en ./index.html ./build/v${{ steps.get_version.outputs.version }}/
-          
-          # Также обновляем основную (latest) версию
-          cp -r ./ru ./en ./index.html ./build/
-
-      # Шаг 6: Развернуть в ветку gh-pages
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-master@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./build
-          force_orphan: false
+      - name: Commit and push
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add versions/
+          git diff --staged --quiet || git commit -m "Add version ${{ github.event.release.tag_name }}"
+          git push
