@@ -12,19 +12,26 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: master
+          
       - name: Create version directory
         run: |
-          VERSION="${{ github.event.release.tag_name }}"
-          mkdir -p "versions/$VERSION"
-          cp index.html "versions/$VERSION/" 2>/dev/null || echo "No index.html"
-          [ -d "ru" ] && cp -r ru "versions/$VERSION/" || echo "No ru folder"
-          [ -d "en" ] && cp -r en "versions/$VERSION/" || echo "No en folder"
+          TAG="${{ github.event.release.tag_name }}"
+          echo "Using tag: $TAG"
+          mkdir -p "versions/$TAG"
+          [ -f ./index.html ] && cp -a ./index.html "versions/$TAG/index.html"
+          [ -d ./ru ] && cp -a ./ru "versions/$TAG/ru"
+          [ -d ./en ] && cp -a ./en "versions/$TAG/en"
+          echo "Contents of versions/$TAG:"
+          ls -la "versions/$TAG"
           
       - name: Commit and push
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
+          git checkout master
           git add versions/
-          git diff --staged --quiet || git commit -m "Add version ${{ github.event.release.tag_name }}"
-          git push
+          git diff --cached --quiet || git commit -m "Add version ${{ github.event.release.tag_name }}"
+          git push origin master
